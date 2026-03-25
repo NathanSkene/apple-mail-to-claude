@@ -31,7 +31,7 @@ The installer walks you through everything:
 Ask Claude Code things like:
 
 - "Search my emails for messages about the budget review"
-- "Find emails from Allan Young about recruitment"
+- "Find recent emails about recruitment"
 - "What did the last email from HR say?"
 
 ## How it works
