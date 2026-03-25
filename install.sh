@@ -1,12 +1,12 @@
 #!/bin/bash
-# One-command installer for Imperial Email Extraction
+# One-command installer for Apple Mail to Claude
 # Usage: bash install.sh
 #
 # This script:
 # 1. Installs Bun (if needed)
 # 2. Installs QMD (if needed)
 # 3. Copies scripts to ~/.claude/scripts/email/
-# 4. Finds your Apple Mail Imperial account
+# 4. Finds your Apple Mail account
 # 5. Runs initial email conversion
 # 6. Creates QMD collection + index
 # 7. Adds QMD MCP server to Claude Code settings
@@ -19,7 +19,7 @@ INSTALL_DIR="$HOME/.claude/scripts/email"
 
 echo ""
 echo "============================================"
-echo "  Imperial Email Extraction — Installer"
+echo "  Apple Mail to Claude — Installer"
 echo "============================================"
 echo ""
 
@@ -59,8 +59,8 @@ echo "Step 3/8: Installing scripts to $INSTALL_DIR..."
 
 mkdir -p "$INSTALL_DIR"
 cp "$REPO_DIR/mbox_to_markdown.py" "$INSTALL_DIR/"
-cp "$REPO_DIR/sync-imperial-email.sh" "$INSTALL_DIR/"
-chmod +x "$INSTALL_DIR/sync-imperial-email.sh"
+cp "$REPO_DIR/sync-email.sh" "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/sync-email.sh"
 chmod +x "$INSTALL_DIR/mbox_to_markdown.py"
 echo "  Scripts installed."
 echo ""
@@ -77,7 +77,7 @@ if [ ! -d "$MAIL_DIR" ]; then
     echo ""
     echo "  Make sure:"
     echo "    1. Apple Mail is open"
-    echo "    2. Your Imperial email account is added"
+    echo "    2. Your email account is added"
     echo "    3. Mail has finished syncing (give it time for large mailboxes)"
     echo ""
     echo "  Then re-run: bash install.sh"
@@ -116,11 +116,11 @@ done
 
 if [ ${#UUIDS[@]} -eq 0 ]; then
     echo "  ERROR: No Apple Mail accounts found."
-    echo "  Add your Imperial email to Apple Mail and let it sync first."
+    echo "  Add your email account to Apple Mail and let it sync first."
     exit 1
 fi
 
-echo "Which account is your Imperial email? Enter the number:"
+echo "Which account do you want to make searchable? Enter the number:"
 read -r choice
 
 # Validate choice (1-indexed)
@@ -134,9 +134,20 @@ SELECTED_UUID="${UUIDS[$idx]}"
 echo ""
 echo "  Selected: $SELECTED_UUID"
 
-# Update the sync script with the UUID
-sed -i '' "s|REPLACE-WITH-YOUR-UUID|$SELECTED_UUID|g" "$INSTALL_DIR/sync-imperial-email.sh"
-echo "  Configured sync script with your account UUID."
+# Ask for a name for this collection
+echo ""
+echo "  Give this email collection a short name (e.g. 'work', 'personal', 'imperial'):"
+read -r COLLECTION_NAME
+COLLECTION_NAME=${COLLECTION_NAME:-email}
+# Sanitise: lowercase, no spaces
+COLLECTION_NAME=$(echo "$COLLECTION_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+
+echo "  Collection name: $COLLECTION_NAME"
+
+# Update the sync script with the UUID and collection name
+sed -i '' "s|REPLACE-WITH-YOUR-UUID|$SELECTED_UUID|g" "$INSTALL_DIR/sync-email.sh"
+sed -i '' "s|REPLACE-WITH-COLLECTION-NAME|$COLLECTION_NAME|g" "$INSTALL_DIR/sync-email.sh"
+echo "  Configured sync script."
 echo ""
 
 # ──────────────────────────────────────────────
@@ -146,16 +157,17 @@ echo "Step 5/8: Converting emails to markdown..."
 echo "  (This may take 10-30 minutes for a large mailbox)"
 echo ""
 
-mkdir -p "$HOME/Mail/Imperial/markdown"
+MAIL_OUTPUT="$HOME/Mail/$COLLECTION_NAME/markdown"
+mkdir -p "$MAIL_OUTPUT"
 
 python3 "$INSTALL_DIR/mbox_to_markdown.py" \
     --apple-mail --incremental \
     --mail-root "$HOME/Library/Mail/V10/$SELECTED_UUID" \
-    "$HOME/Mail/Imperial/markdown/"
+    "$MAIL_OUTPUT/"
 
-email_count=$(find "$HOME/Mail/Imperial/markdown" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
+email_count=$(find "$MAIL_OUTPUT" -name "*.md" 2>/dev/null | wc -l | tr -d ' ')
 echo ""
-echo "  Converted $email_count emails to ~/Mail/Imperial/markdown/"
+echo "  Converted $email_count emails to ~/Mail/$COLLECTION_NAME/markdown/"
 echo ""
 
 # ──────────────────────────────────────────────
@@ -164,11 +176,11 @@ echo ""
 echo "Step 6/8: Creating search index..."
 
 # Check if collection already exists
-if qmd collection list 2>/dev/null | grep -q "imperial-email"; then
-    echo "  QMD collection 'imperial-email' already exists, updating..."
+if qmd collection list 2>/dev/null | grep -q "$COLLECTION_NAME"; then
+    echo "  QMD collection '$COLLECTION_NAME' already exists, updating..."
 else
-    qmd collection add "$HOME/Mail/Imperial/markdown" --name imperial-email --mask "**/*.md"
-    echo "  Created QMD collection 'imperial-email'"
+    qmd collection add "$MAIL_OUTPUT" --name "$COLLECTION_NAME" --mask "**/*.md"
+    echo "  Created QMD collection '$COLLECTION_NAME'"
 fi
 
 echo "  Indexing emails (this runs locally, nothing leaves your Mac)..."
@@ -226,11 +238,11 @@ echo ""
 echo "Step 8/8: Automatic sync setup"
 echo ""
 
-SYNC_SCRIPT="$INSTALL_DIR/sync-imperial-email.sh"
+SYNC_SCRIPT="$INSTALL_DIR/sync-email.sh"
 QMD_BIN=$(which qmd 2>/dev/null || echo "$HOME/.bun/bin/qmd")
 
 # Check if cron already has our sync
-if crontab -l 2>/dev/null | grep -q "sync-imperial-email"; then
+if crontab -l 2>/dev/null | grep -q "sync-email"; then
     echo "  Cron job already exists."
 else
     echo "  To sync emails automatically every 30 minutes, run:"
@@ -239,14 +251,14 @@ else
     echo ""
     echo "  And add these two lines:"
     echo ""
-    echo "    0,30 * * * * $SYNC_SCRIPT >> /tmp/sync-imperial.log 2>&1"
+    echo "    0,30 * * * * $SYNC_SCRIPT >> /tmp/sync-email.log 2>&1"
     echo "    5,35 * * * * $QMD_BIN update >> /tmp/qmd-update.log 2>&1 && timeout 1200 $QMD_BIN embed >> /tmp/qmd-update.log 2>&1"
     echo ""
     echo "  Or I can add them for you now. Add cron jobs? (y/n)"
     read -r add_cron
 
     if [[ "$add_cron" == "y" || "$add_cron" == "Y" ]]; then
-        (crontab -l 2>/dev/null || true; echo "0,30 * * * * $SYNC_SCRIPT >> /tmp/sync-imperial.log 2>&1"; echo "5,35 * * * * $QMD_BIN update >> /tmp/qmd-update.log 2>&1 && timeout 1200 $QMD_BIN embed >> /tmp/qmd-update.log 2>&1") | crontab -
+        (crontab -l 2>/dev/null || true; echo "0,30 * * * * $SYNC_SCRIPT >> /tmp/sync-email.log 2>&1"; echo "5,35 * * * * $QMD_BIN update >> /tmp/qmd-update.log 2>&1 && timeout 1200 $QMD_BIN embed >> /tmp/qmd-update.log 2>&1") | crontab -
         echo "  Cron jobs added."
     else
         echo "  Skipped. You can add them later."
@@ -259,9 +271,9 @@ echo "  Setup complete!"
 echo "============================================"
 echo ""
 echo "  Emails:     $email_count converted"
-echo "  Location:   ~/Mail/Imperial/markdown/"
-echo "  Search:     qmd search 'query' -c imperial-email"
+echo "  Location:   ~/Mail/$COLLECTION_NAME/markdown/"
+echo "  Search:     qmd search 'query' -c $COLLECTION_NAME"
 echo ""
 echo "  Next: restart Claude Code, then ask it to"
-echo "  'search my Imperial emails for ...'"
+echo "  'search my emails for ...'"
 echo ""
