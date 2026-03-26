@@ -36,7 +36,7 @@ The installer will:
 - Convert your emails into text files Claude can read
 - Set up automatic syncing so new emails appear every 30 minutes
 
-The whole process takes about 10-20 minutes depending on how many emails you have.
+The install itself takes a few minutes. Converting your emails depends on how many you have — a few thousand takes 5 minutes, 40,000+ can take 30-60 minutes. Building the search index can take another 30-60 minutes on top of that (it runs a small AI model on your Mac to understand your emails — no GPU needed, but it's not instant). You can use your Mac normally while it runs.
 
 ## Using it
 
